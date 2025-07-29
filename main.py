@@ -3,7 +3,8 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart, ModelResponse, TextPart
 import vertexai
-from vertexai import rag
+from google.cloud import aiplatform
+
 import asyncio
 from pydantic_ai.settings import ModelSettings
 import os
@@ -17,6 +18,12 @@ from typing import List
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
+if not OPENAI_API_KEY:
+    print("אזהרה: OPENAI_API_KEY לא נמצא בקובץ .env")
+    print("אנא צור קובץ .env עם התוכן הבא:")
+    print("OPENAI_API_KEY=your_openai_api_key_here")
+    print("וחלף את 'your_openai_api_key_here' עם ה-API key שלך מ-OpenAI")
+
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "SA.json"
 
 # Initialize Vertex AI
@@ -28,12 +35,27 @@ vertexai.init(project=PROJECT_ID, location=LOCATION)
 # RAG Search Function
 def google_rag_search(query: str) -> str:
     """שליפה מה‑RAG Engine וחיבור הקונטקסטים לטקסט אחד."""
-    response = rag.retrieval_query(
-        rag_resources=[rag.RagResource(rag_corpus=CORPUS_ID)],
-        text=query,
-        rag_retrieval_config=rag.RagRetrievalConfig(top_k=5),
-    )
-    return "\n\n".join(ctx.text for ctx in response.contexts.contexts)
+    try:
+        # Initialize Vertex AI RAG
+        aiplatform.init(project=PROJECT_ID, location=LOCATION)
+        
+        # Create RAG client
+        rag_client = aiplatform.RagClient()
+        
+        # Perform retrieval query
+        response = rag_client.retrieval_query(
+            rag_resources=[aiplatform.RagResource(rag_corpus=CORPUS_ID)],
+            text=query,
+            rag_retrieval_config=aiplatform.RagRetrievalConfig(top_k=5),
+        )
+        
+        # Extract and join context texts
+        contexts = response.contexts.contexts if hasattr(response, 'contexts') and hasattr(response.contexts, 'contexts') else []
+        return "\n\n".join(ctx.text for ctx in contexts) if contexts else "לא נמצא מידע רלוונטי."
+        
+    except Exception as e:
+        print(f"שגיאה ב-RAG search: {e}")
+        return "שגיאה בחיפוש מידע. אנא נסה שוב."
 
 # Setup OpenAI Provider and Model
 provider = OpenAIProvider(api_key=OPENAI_API_KEY)  
