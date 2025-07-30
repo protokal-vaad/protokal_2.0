@@ -1,3 +1,4 @@
+# Import necessary modules from pydantic_ai and other libraries
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -14,27 +15,32 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
+# Get OpenAI API key from environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
 if not OPENAI_API_KEY:
+    # Print warning in Hebrew if API key is missing
     print("אזהרה: OPENAI_API_KEY לא נמצא בקובץ .env")
     print("אנא צור קובץ .env עם התוכן הבא:")
     print("OPENAI_API_KEY=your_openai_api_key_here")
     print("וחלף את 'your_openai_api_key_here' עם ה-API key שלך מ-OpenAI")
 
+# Set Google Application Credentials for Vertex AI
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "SA.json"
 
-# Initialize Vertex AI
+# Initialize Vertex AI project, location, and corpus
 PROJECT_ID = "protokal-445011"
 LOCATION   = "us-central1"
 CORPUS_ID  = "projects/protokal-445011/locations/us-central1/ragCorpora/4611686018427387904"
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
-# RAG Search Function
+# RAG Search Function for retrieving context from Vertex AI
+# Returns concatenated context texts or error message
+# Hebrew docstring for local context
 def google_rag_search(query: str) -> str:
-    """שליפה מה‑RAG Engine וחיבור הקונטקסטים לטקסט אחד."""
+    """Fetches context from the RAG Engine and concatenates results into a single text."""
     try:
         # Initialize Vertex AI RAG
         aiplatform.init(project=PROJECT_ID, location=LOCATION)
@@ -61,7 +67,7 @@ def google_rag_search(query: str) -> str:
 provider = OpenAIProvider(api_key=OPENAI_API_KEY)  
 llm_model = OpenAIModel("gpt-4o-mini", provider=provider)
 
-# Agent Configuration
+# Agent Configuration with detailed system prompt (Hebrew)
 agent = Agent(
     llm_model,
     system_prompt="""אתה עוזר וירטואלי המתמחה בפרוטוקולים של ועד מקומי ריחן.  
@@ -91,22 +97,22 @@ agent = Agent(
     tools=[google_rag_search],
 )
 
-# Chat Handler Function
+# Asynchronous chat handler for processing user messages and updating message history
 async def chat_handler(message: str, message_history: List[ModelMessage]):
     run = await agent.run(message, message_history=message_history)
     return run.output, message_history + [ModelRequest(parts=[UserPromptPart(content=message)]), ModelResponse(parts=[TextPart(content=run.output)])]
 
-# FastAPI App
+# Initialize FastAPI app
 app = FastAPI()
 
-# Pydantic Model for Request
+# Pydantic model for chat request body
 class ChatRequest(BaseModel):
     message: str
 
-# Global Message History
+# Global message history for chat session
 message_history: List[ModelMessage] = []
 
-# Endpoints
+# Endpoint for chat interaction
 @app.post("/chat")
 async def chat(request: ChatRequest):
     global message_history
@@ -114,12 +120,14 @@ async def chat(request: ChatRequest):
     message_history = new_message_history
     return {"response": bot_message}
 
+# Endpoint to clear chat history
 @app.post("/clear")
 async def clear():
     global message_history
     message_history = []
     return {"status": "cleared"}
 
+# Run the FastAPI app with Uvicorn if executed as main script
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
